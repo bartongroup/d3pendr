@@ -22,6 +22,7 @@ setup(
         'pandas',
         'click',
         'pysam',
-        'statsmodels'
+        'statsmodels',
+        'joblib'
     ],
 )

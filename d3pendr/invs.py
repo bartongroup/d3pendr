@@ -1,3 +1,18 @@
+def relative_tpe(gene_start, gene_end, aln_start, aln_end, strand, read_end):
+    # make tpe position relative to gene start rather than 
+    # genomic coordinates
+    if read_end == '3':
+        if strand == '+':
+            return aln_end - gene_start
+        else:
+            return gene_end - aln_start
+    elif read_end == '5':
+        if strand == '+':
+            return aln_start - gene_start
+        else:
+            return gene_end - aln_end
+
+
 def intersect(inv_a, inv_b):
     a_start, a_end = inv_a
     b_start, b_end = inv_b

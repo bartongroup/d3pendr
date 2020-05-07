@@ -1,8 +1,9 @@
+import itertools as it
 import numpy as np
 from scipy import stats
 
 
-def wasserstein_distance_and_direction(u_values, v_values, log10_transform):
+def wasserstein_distance_and_direction(u_values, v_values):
 
     # modified from scipy.stats._cdf_distance
 
@@ -14,8 +15,6 @@ def wasserstein_distance_and_direction(u_values, v_values, log10_transform):
 
     # Compute the differences between pairs of successive values of u and v.
     deltas = np.diff(all_values)
-    if log10_transform:
-        deltas = np.log10(deltas + 1)
 
     # Get the respective positions of the values of u and v among the values of
     # both distributions.
@@ -36,7 +35,7 @@ def wasserstein_distance_and_direction(u_values, v_values, log10_transform):
 def wasserstein_test(u_values, v_values, bootstraps=999):
     # permutation test of wasserstein distance
     # based on the one outlined in https://github.com/cdowd/twosamples
-    obs = stats.wasserstein_distance(u_values, v_values)
+    wass_dist, wass_dir = wasserstein_distance_and_direction(u_values, v_values)
 
     # under null hypothesis the samples are drawn from the same distribution
     # so we can make expected wasserstein values by permuting values between
@@ -50,22 +49,48 @@ def wasserstein_test(u_values, v_values, bootstraps=999):
     exp = np.array(exp)
 
     # bootstrap p value with pseudocount
-    p = ((exp >= obs).sum() + 1) / (bootstraps + 1)
-    return p
+    p_val = ((exp >= wass_dist).sum() + 1) / (bootstraps + 1)
+    return wass_dist, wass_dir, p_val
 
 
-def tpe_stats(tpe_dist_cntrl, tpe_dist_treat, bootstraps=999, log10_transform=False):
-    wass_dist, wass_dir = wasserstein_distance_and_direction(
-        tpe_dist_cntrl, tpe_dist_treat, log10_transform
-    )
-    wass_pval = wasserstein_test(tpe_dist_cntrl, tpe_dist_treat, bootstraps)
-    ks_stat, ks_pval = stats.ks_2samp(tpe_dist_cntrl, tpe_dist_treat)
+def wasserstein_test_with_replicates(u_values, v_values,
+                                     bootstraps=999, threshold=0.05):
+    # first pool replicates and perform normal wass test
+    u_pooled = np.concatenate(u_values)
+    v_pooled = np.concatenate(v_values)
+    wass_dist, wass_dir, p_val = wasserstein_test(u_pooled, v_pooled, bootstraps=bootstraps)
 
-    # combine the two tests using the harmonic mean of the p values
-    try:
-        hm_pval = stats.hmean([wass_pval, ks_pval])
-    except ValueError:
-        # if result is so sig that ks_2samp reports a pval of 0.0, hmean throws error
-        # use the smallest number that can be represented as float64 as placeholder
-        hm_pval = stats.hmean([wass_pval, np.finfo(np.float64).tiny])
-    return wass_dist, wass_dir, wass_pval, ks_stat, ks_pval, hm_pval
+    # we only bother testing for homogeneity of replicates if the test between
+    # replicates is significant
+    if p_val <= threshold:
+
+        # produce pairwise distances between replicates for both conditions
+        u_self_wass = np.array(
+            [stats.wasserstein_distance(u_i, u_j)
+             for u_i, u_j in it.combinations(u_values, r=2)]
+        )
+        v_self_wass = np.array(
+            [stats.wasserstein_distance(v_i, v_j)
+             for v_i, v_j in it.combinations(v_values, r=2)]
+        )
+
+        # samples are considered homogeneous if the distance between the two
+        # conds is greater than all the pairwise distances within conds.
+        is_homogeneous = 1 - int((u_self_wass >= wass_dist).any() |
+                                 (v_self_wass >= wass_dist).any())
+        if not is_homogeneous:
+            p_val = 1
+    return wass_dist, wass_dir, p_val
+
+
+def tpe_stats(tpe_dist_cntrl, tpe_dist_treat, bootstraps=999, threshold=0.05):
+    if len(tpe_dist_cntrl) == 1:
+        wass_dist, wass_dir, wass_pval = wasserstein_test(
+            tpe_dist_cntrl[0], tpe_dist_treat[0], bootstraps
+        )
+    else:
+        wass_dist, wass_dir, wass_pval = wasserstein_test_with_replicates(
+            tpe_dist_cntrl, tpe_dist_treat, bootstraps, threshold
+        )
+
+    return wass_dist, wass_dir, wass_pval

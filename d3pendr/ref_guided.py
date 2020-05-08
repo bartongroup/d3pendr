@@ -160,8 +160,9 @@ def get_apa_tpes(cntrl_distrib, nreads_cntrl,
 def process_gtf_records(gtf_records, treat_bam_fns, cntrl_bam_fns,
                         read_strand, read_end, paired_end_read,
                         min_read_overlap, min_reads,
-                        bootstraps, threshold, is_bam,
-                        find_apa_tpe_sites, tpe_sigma,
+                        bootstraps, threshold,
+                        use_gamma_model, test_homogeneity,
+                        is_bam, find_apa_tpe_sites, tpe_sigma,
                         tpe_min_reads, tpe_min_rel_change):
     results = []
     tpe_apa_res = []
@@ -181,12 +182,13 @@ def process_gtf_records(gtf_records, treat_bam_fns, cntrl_bam_fns,
                 min_read_overlap, read_strand, read_end,
                 paired_end_read, is_bam
             )
-                    
 
             if (nreads_cntrl >= min_reads).all() and (nreads_treat >= min_reads).all():
                 wass_dist, wass_dir, wass_pval = tpe_stats(
                     cntrl_distribs, treat_distribs,
                     bootstraps=bootstraps, threshold=threshold,
+                    use_gamma_model=use_gamma_model,
+                    test_homogeneity=test_homogeneity,
                 )
                 results.append([
                     chrom, start, end, gene_id, round(wass_dist), strand,
@@ -243,6 +245,7 @@ def ref_guided_diff_tpe(gtf_fn, treat_bam_fns, cntrl_bam_fns,
                         extend_gene_five_prime, use_5utr,
                         extend_gene_three_prime,
                         bootstraps, threshold,
+                        use_gamma_model, test_homogeneity,
                         find_tpe_sites, tpe_sigma,
                         tpe_min_reads, tpe_min_rel_change,
                         processes):
@@ -254,8 +257,9 @@ def ref_guided_diff_tpe(gtf_fn, treat_bam_fns, cntrl_bam_fns,
         treat_bam_fns, cntrl_bam_fns,
         read_strand, read_end, paired_end_read,
         min_read_overlap, min_reads_per_cond,
-        bootstraps, threshold, filetype,
-        find_tpe_sites, tpe_sigma,
+        bootstraps, threshold,
+        use_gamma_model, test_homogeneity,
+        filetype, find_tpe_sites, tpe_sigma,
         tpe_min_reads, tpe_min_rel_change,
     )
     gtf_it = gtf_iterator(

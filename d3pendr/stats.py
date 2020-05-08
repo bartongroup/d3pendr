@@ -32,7 +32,7 @@ def wasserstein_distance_and_direction(u_values, v_values):
     return np.sum(np.abs(mag)), np.sum(mag)
 
 
-def wasserstein_test(u_values, v_values, bootstraps=999):
+def wasserstein_test(u_values, v_values, bootstraps=999, use_gamma_model=True):
     # permutation test of wasserstein distance
     # based on the one outlined in https://github.com/cdowd/twosamples
     wass_dist, wass_dir = wasserstein_distance_and_direction(u_values, v_values)
@@ -48,21 +48,32 @@ def wasserstein_test(u_values, v_values, bootstraps=999):
         exp.append(stats.wasserstein_distance(pool[:n], pool[n:]))
     exp = np.array(exp)
 
-    # bootstrap p value with pseudocount
-    p_val = ((exp >= wass_dist).sum() + 1) / (bootstraps + 1)
+    if not use_gamma_model:
+        # bootstrap p value with pseudocount
+        p_val = ((exp >= wass_dist).sum() + 1) / (bootstraps + 1)
+    else:
+        # fit a gamma distribution to the expected distances
+        g = stats.gamma(*stats.gamma.fit(exp))
+        # compute p value using survival function
+        p_val = g.sf(wass_dist)
     return wass_dist, wass_dir, p_val
 
 
 def wasserstein_test_with_replicates(u_values, v_values,
-                                     bootstraps=999, threshold=0.05):
+                                     bootstraps=999,
+                                     threshold=0.05,
+                                     use_gamma_model=True,
+                                     test_homogeneity=False):
     # first pool replicates and perform normal wass test
     u_pooled = np.concatenate(u_values)
     v_pooled = np.concatenate(v_values)
-    wass_dist, wass_dir, p_val = wasserstein_test(u_pooled, v_pooled, bootstraps=bootstraps)
+    wass_dist, wass_dir, p_val = wasserstein_test(
+        u_pooled, v_pooled, bootstraps=bootstraps, use_gamma_model=use_gamma_model
+    )
 
     # we only bother testing for homogeneity of replicates if the test between
     # replicates is significant
-    if p_val <= threshold:
+    if test_homogeneity and p_val <= threshold:
 
         # produce pairwise distances between replicates for both conditions
         u_self_wass = np.array(
@@ -83,14 +94,17 @@ def wasserstein_test_with_replicates(u_values, v_values,
     return wass_dist, wass_dir, p_val
 
 
-def tpe_stats(tpe_dist_cntrl, tpe_dist_treat, bootstraps=999, threshold=0.05):
+def tpe_stats(tpe_dist_cntrl, tpe_dist_treat,
+              bootstraps=999, threshold=0.05,
+              use_gamma_model=True, test_homogeneity=False):
     if len(tpe_dist_cntrl) == 1:
         wass_dist, wass_dir, wass_pval = wasserstein_test(
-            tpe_dist_cntrl[0], tpe_dist_treat[0], bootstraps
+            tpe_dist_cntrl[0], tpe_dist_treat[0], bootstraps, use_gamma_model,
         )
     else:
         wass_dist, wass_dir, wass_pval = wasserstein_test_with_replicates(
-            tpe_dist_cntrl, tpe_dist_treat, bootstraps, threshold
+            tpe_dist_cntrl, tpe_dist_treat, bootstraps,
+            threshold, use_gamma_model, test_homogeneity,
         )
 
     return wass_dist, wass_dir, wass_pval

@@ -10,7 +10,7 @@ from joblib import Parallel, delayed
 
 from .io import (
     MultiBamParser, MultiBigWigParser, bam_or_bw,
-    bed12_iterator, write_output_bed
+    gtf_iterator, write_output_bed
 )
 from .invs import relative_tpe, intersect_spliced_invs
 from .stats import tpe_stats
@@ -156,10 +156,8 @@ def get_apa_tpes(cntrl_distrib, nreads_cntrl,
                 yield (start, end, cntrl_count, treat_count,
                        cntrl_frac, treat_frac, relative_change)
         
-    
 
-
-def process_bed_records(bed_records, treat_bam_fns, cntrl_bam_fns,
+def process_gtf_records(gtf_records, treat_bam_fns, cntrl_bam_fns,
                         read_strand, read_end, paired_end_read,
                         min_read_overlap, min_reads,
                         bootstraps, threshold, is_bam,
@@ -172,7 +170,7 @@ def process_bed_records(bed_records, treat_bam_fns, cntrl_bam_fns,
 
     with parser(cntrl_bam_fns) as cntrl_bam, parser(treat_bam_fns) as treat_bam:
 
-        for chrom, start, end, gene_id, strand in bed_records:
+        for chrom, start, end, gene_id, strand in gtf_records:
             cntrl_distribs, nreads_cntrl = get_tpe_distribution(
                 cntrl_bam, chrom, start, end, strand,
                 min_read_overlap, read_strand, read_end,
@@ -226,20 +224,20 @@ def process_bed_records(bed_records, treat_bam_fns, cntrl_bam_fns,
     return results, tpe_apa_res
 
 
-def chunk_bed_records(bed_records, processes):
-    # read the whole bed file
-    bed_records = list(bed_records)
-    nrecords = len(bed_records)
+def chunk_gtf_records(gtf_records, processes):
+    # read the whole gtf file
+    gtf_records = list(gtf_records)
+    nrecords = len(gtf_records)
     n, r = divmod(nrecords, processes)
     split_points = ([0] + r * [n + 1] + (processes - r) * [n])
     split_points = np.cumsum(split_points)
     for i in range(processes):
         start = split_points[i]
         end = split_points[i + 1]
-        yield bed_records[start: end]
+        yield gtf_records[start: end]
 
 
-def ref_guided_diff_tpe(bed_fn, treat_bam_fns, cntrl_bam_fns,
+def ref_guided_diff_tpe(gtf_fn, treat_bam_fns, cntrl_bam_fns,
                         read_strand, read_end, paired_end_read,
                         min_read_overlap, min_reads_per_cond,
                         extend_gene_five_prime, use_5utr,
@@ -260,18 +258,18 @@ def ref_guided_diff_tpe(bed_fn, treat_bam_fns, cntrl_bam_fns,
         find_tpe_sites, tpe_sigma,
         tpe_min_reads, tpe_min_rel_change,
     )
-    bed_it = bed12_iterator(
-        bed_fn, extend_gene_five_prime, use_5utr, extend_gene_three_prime
+    gtf_it = gtf_iterator(
+        gtf_fn, extend_gene_five_prime, use_5utr, extend_gene_three_prime
     )
     if processes == 1:
         # run on main process
-        results, tpa_apa_results = process_bed_records(
-            bed_it, *args
+        results, tpa_apa_results = process_gtf_records(
+            gtf_it, *args
         )
     else:
         results = Parallel(n_jobs=processes)(
-            delayed(process_bed_records)(bed_chunk, *args)
-            for bed_chunk in chunk_bed_records(bed_it, processes)
+            delayed(process_gtf_records)(gtf_chunk, *args)
+            for gtf_chunk in chunk_gtf_records(gtf_it, processes)
         )
         results, tpe_apa_results = zip(*results)
         results = pd.concat(results)

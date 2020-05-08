@@ -1,3 +1,4 @@
+import re
 import numpy as np
 import pysam
 import pyBigWig as pybw
@@ -154,46 +155,61 @@ def bam_or_bw(fn):
         raise ValueError('files must be bam, sam, or bigwig format')
 
 
-def parse_inv(record, use_5utr):
-    chrom = record[0]
-    start = int(record[1])
-    end = int(record[2])
-    gene_id = record[3]
-    strand = record[5]
-    if not use_5utr:
-        cds_start = int(record[6])
-        cds_end = int(record[7])
-        if cds_start != cds_end:
-            # not a protein coding gene
-            if strand == '+':
-                start = cds_start
-            else:
-                end = cds_end
-    return chrom, start, end, strand, gene_id
+def gtf_iterator(gtf_fn, extend_gene_five_prime, ignore_5utr, extend_gene_three_prime):
+    gtf_records = {}
+    with open(gtf_fn) as gtf:
+        for i, record in enumerate(gtf):
+            record = record.split('\t')
+            feat_type = record[2]
+            if feat_type == 'CDS' or feat_type == 'exon':
+                try:
+                    gene_id = re.search('gene_id "(.+?)";', record[8]).group(1)
+                except AttributeError:
+                    raise ValueError(f'Could not parse gene_id from GTF line {i}')
+                if gene_id not in gtf_records:
+                    gtf_records[gene_id] = {
+                        'chrom': record[0],
+                        'strand': record[6]
+                    }
+                start = int(record[3]) - 1
+                end = int(record[4])
+                if feat_type not in gtf_records[gene_id]:
+                    gtf_records[gene_id][feat_type] = (start, end)
+                else:
+                    curr_range = gtf_records[gene_id][feat_type]
+                    new_range = (
+                        min(curr_range[0], start),
+                        max(curr_range[1], end),
+                    )
+                    gtf_records[gene_id][feat_type] = new_range
 
+    # once whole file is parsed yield the intervals
+    for gene_id, gene_info in gtf_records.items():
+        chrom = gene_info['chrom']
+        strand = gene_info['strand']
+        exon_start, exon_end = gene_info['exon']
+        try:
+            cds_start, cds_end = gene_info['CDS']
+        except KeyError:
+            # non-coding RNA
+            cds_start, cds_end = gene_info['exon']
 
-def parse_bed_record(record, extend_gene_five_prime=0, use_5utr=True, extend_gene_three_prime=0):
-    chrom, start, end, strand, gene_id = parse_inv(record, use_5utr)
-    if extend_gene_five_prime:
-        if strand == '+':
-            start = max(0, start - extend_gene_five_prime)
+        # remove region corresponding to 5'UTR if necessary
+        if ignore_5utr:
+            gene_start = cds_start if strand == '+' else exon_start
+            gene_end = exon_end if strand == '+' else cds_end
         else:
-            end += extend_gene_five_prime
-    if extend_gene_three_prime:
-        if strand == '+':
-            end += extend_gene_three_prime
-        else:
-            start = max(0, start - extend_gene_three_prime)
-    return chrom, start, end, gene_id, strand
+            gene_start = exon_start
+            gene_end = exon_end
 
+        # add extensions to 3' and 5' ends
+        start_ext, end_ext = extend_gene_five_prime, extend_gene_three_prime
+        if strand == '-':
+            start_ext, end_ext = end_ext, start_ext
+        gene_start = max(0, gene_start - start_ext)
+        gene_end = gene_end + end_ext
 
-def bed12_iterator(bed_fn, extend_gene_five_prime, ignore_5utr, extend_gene_three_prime):
-    with open(bed_fn) as bed:
-        for record in bed:
-            record = record.split()
-            yield parse_bed_record(
-                record, extend_gene_five_prime, ignore_5utr, extend_gene_three_prime
-            )
+        yield chrom, gene_start, gene_end, gene_id, strand
 
 
 def write_output_bed(output_bed_fn, results):

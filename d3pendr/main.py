@@ -9,7 +9,7 @@ from .ref_guided import ref_guided_diff_tpe
 @click.option('-c', '--control-fns', required=True, multiple=True)
 @click.option('-o', '--output-prefix', required=True)
 @click.option('--write-apa-sites/--no-apa-sites', required=False, default=True)
-@click.option('-a', '--annotation-bed12', required=True)
+@click.option('-a', '--annotation-gtf-fn', required=True)
 @click.option('--read-strand', type=click.Choice(['same', 'opposite', 'unstranded']), default='same')
 @click.option('--read-end', type=click.Choice(['3', '5']), default='3')
 @click.option('--paired-end-read', type=click.Choice(['1', '2', 'both', 'single']), default='single')
@@ -26,7 +26,7 @@ from .ref_guided import ref_guided_diff_tpe
 @click.option('-p', '--processes', default=4)
 def d3pendr(treatment_fns, control_fns,
             output_prefix, write_apa_sites,
-            annotation_bed12,
+            annotation_gtf_fn,
             read_strand, read_end, paired_end_read,
             min_read_overlap, min_reads_per_rep,
             extend_gene_five_prime, use_5utr,
@@ -50,7 +50,7 @@ def d3pendr(treatment_fns, control_fns,
         paired_end_read = 'both'
 
     results, apa_sites = ref_guided_diff_tpe(
-        annotation_bed12,
+        annotation_gtf_fn,
         treatment_fns, control_fns,
         read_strand, read_end, paired_end_read,
         min_read_overlap, min_reads_per_rep,

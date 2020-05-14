@@ -13,6 +13,10 @@ setup(
             'd3pendr = d3pendr.main:d3pendr',
         ]
     },
+    scripts=[
+        'scripts/filter_internal_priming.py',
+        'scripts/filter_nanopore_oversplitting.py'
+    ],
     packages=[
         'd3pendr',
     ],

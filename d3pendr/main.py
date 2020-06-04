@@ -18,6 +18,9 @@ from .ref_guided import ref_guided_diff_tpe
 @click.option('--extend-gene-five-prime', default=0)
 @click.option('--use-5utr/--ignore-5utr', default=True)
 @click.option('--extend-gene-three-prime', default=0)
+@click.option('--use-locus-tag/--use-gene-id-tag', default=False)
+@click.option('--max-terminal-intron-size', default=100_000)
+@click.option('--min-terminal-exon-size', default=30)
 @click.option('--bootstraps', default=999)
 @click.option('--threshold', default=0.05)
 @click.option('--use-gamma-model/--no-model', default=True)
@@ -33,6 +36,8 @@ def d3pendr(treatment_fns, control_fns,
             min_read_overlap, min_reads_per_rep,
             extend_gene_five_prime, use_5utr,
             extend_gene_three_prime,
+            use_locus_tag,
+            max_terminal_intron_size, min_terminal_exon_size,
             bootstraps, threshold, use_gamma_model, test_homogeneity,
             tpe_cluster_sigma, min_tpe_reads, min_tpe_fractional_change,
             processes):
@@ -58,6 +63,8 @@ def d3pendr(treatment_fns, control_fns,
         min_read_overlap, min_reads_per_rep,
         extend_gene_five_prime, use_5utr,
         extend_gene_three_prime,
+        use_locus_tag,
+        max_terminal_intron_size, min_terminal_exon_size,
         bootstraps, threshold,
         use_gamma_model, test_homogeneity,
         write_apa_sites,

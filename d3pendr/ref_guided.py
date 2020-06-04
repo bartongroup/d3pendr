@@ -244,6 +244,9 @@ def ref_guided_diff_tpe(gtf_fn, treat_bam_fns, cntrl_bam_fns,
                         min_read_overlap, min_reads_per_cond,
                         extend_gene_five_prime, use_5utr,
                         extend_gene_three_prime,
+                        by_locus,
+                        max_terminal_intron_size,
+                        min_terminal_exon_size,
                         bootstraps, threshold,
                         use_gamma_model, test_homogeneity,
                         find_tpe_sites, tpe_sigma,
@@ -263,7 +266,8 @@ def ref_guided_diff_tpe(gtf_fn, treat_bam_fns, cntrl_bam_fns,
         tpe_min_reads, tpe_min_rel_change,
     )
     gtf_it = gtf_iterator(
-        gtf_fn, extend_gene_five_prime, use_5utr, extend_gene_three_prime
+        gtf_fn, extend_gene_five_prime, use_5utr, extend_gene_three_prime,
+        by_locus, max_terminal_intron_size, min_terminal_exon_size,
     )
     if processes == 1:
         # run on main process

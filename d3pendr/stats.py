@@ -94,9 +94,9 @@ def wasserstein_test_with_replicates(u_values, v_values,
     return wass_dist, wass_dir, p_val
 
 
-def tpe_stats(tpe_dist_cntrl, tpe_dist_treat,
-              bootstraps=999, threshold=0.05,
-              use_gamma_model=True, test_homogeneity=False):
+def d3pendr_stats(tpe_dist_cntrl, tpe_dist_treat,
+                  bootstraps=999, threshold=0.05,
+                  use_gamma_model=True, test_homogeneity=False):
     if len(tpe_dist_cntrl) == 1:
         wass_dist, wass_dir, wass_pval = wasserstein_test(
             tpe_dist_cntrl[0], tpe_dist_treat[0], bootstraps, use_gamma_model,

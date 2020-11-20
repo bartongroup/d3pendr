@@ -1,7 +1,10 @@
 import click
 
-from .io import write_output_bed, write_apa_site_bed
-from .ref_guided import ref_guided_diff_tpe
+from .output import (
+    write_wass_test_output_bed,
+    write_apa_site_bed,
+)
+from .d3pendr import run_d3pendr
 
 
 @click.command()
@@ -52,11 +55,7 @@ def d3pendr(treatment_fns, control_fns,
     Outputs bed6 format with extra columns.
     '''
 
-    if paired_end_read == 'single':
-        # for options single or both, all reads are used
-        paired_end_read = 'both'
-
-    results, apa_sites = ref_guided_diff_tpe(
+    results, apa_sites = run_d3pendr(
         annotation_gtf_fn,
         treatment_fns, control_fns,
         read_strand, read_end, paired_end_read,
@@ -72,7 +71,7 @@ def d3pendr(treatment_fns, control_fns,
         processes
     )
     output_bed = f'{output_prefix}.apa_results.bed'
-    write_output_bed(output_bed, results)
+    write_wass_test_output_bed(output_bed, results)
     if write_apa_sites:
         apa_site_bed = f'{output_prefix}.apa_sites.bed'
         write_apa_site_bed(apa_site_bed, apa_sites)

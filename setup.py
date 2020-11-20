@@ -11,6 +11,7 @@ setup(
     entry_points={
         'console_scripts': [
             'd3pendr = d3pendr.main:d3pendr',
+            'ndapars = d3pendr.main:ndapars',
         ]
     },
     scripts=[
@@ -26,6 +27,7 @@ setup(
         'pandas',
         'click',
         'pysam',
+        #'pyBigWig',
         'statsmodels',
         'joblib'
     ],

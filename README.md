@@ -1,0 +1,5 @@
+# d3pendr
+
+d3pendr is a tool for testing differential 3' end processing of transcriptional loci using read alignments in BAM format, where one end of each read alignment corresponds to the end of an RNA molecule. For example, it can be used with nanopore DRS data where the 3' end of the read alignment corresponds to the 3' end of the mRNA molecule, or Illumina PATseq data where the 5' end of the read alignment corresponds to the 3' end of the mRNA molecule.
+
+d3pendr uses the wasserstein (or "Earth mover") distance to measure differences between treatment and control 3' end distributions, as well as the difference between the mean 3' end positions to measure directional changes. Statistical significance is assessed by permuting read alignments between the control and treatment distributions to measure the maximum distance which could be achieved by random sampling error.

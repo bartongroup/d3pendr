@@ -11,15 +11,15 @@ def wasserstein_distance_and_direction(u_values, v_values):
     v_sorter = np.argsort(v_values)
 
     all_values = np.concatenate((u_values, v_values))
-    all_values.sort(kind='mergesort')
+    all_values = np.sort(all_values)
 
     # Compute the differences between pairs of successive values of u and v.
     deltas = np.diff(all_values)
 
     # Get the respective positions of the values of u and v among the values of
     # both distributions.
-    u_cdf_indices = u_values[u_sorter].searchsorted(all_values[:-1], 'right')
-    v_cdf_indices = v_values[v_sorter].searchsorted(all_values[:-1], 'right')
+    u_cdf_indices = np.searchsorted(u_values[u_sorter], all_values[:-1], 'right')
+    v_cdf_indices = np.searchsorted(v_values[v_sorter], all_values[:-1], 'right')
 
     # Calculate the CDFs of u and v
     u_cdf = u_cdf_indices / u_values.size
@@ -32,7 +32,63 @@ def wasserstein_distance_and_direction(u_values, v_values):
     return np.sum(np.abs(mag)), np.sum(mag)
 
 
-def wasserstein_test(u_values, v_values, bootstraps=999, use_gamma_model=True):
+def pairwise_wasserstein(samples):
+    dist_mat = np.empty(shape=(len(samples), len(samples)))
+    for i, j in zip(*np.triu_indices(len(samples))):
+        if i == j:
+            dist_mat[i, j] = 0
+        else:
+            wass, _ = wasserstein_distance_and_direction(samples[i], samples[j])
+            dist_mat[i, j] = wass
+            dist_mat[j, i] = wass
+    return dist_mat
+
+
+def wasserstein_silhouette_test(cntrl, treat, bootstraps=999,
+                                fit_skewnorm=True, fit_gamma=True,
+                                random_state=None):
+    rs = np.random.RandomState(random_state)
+    wass_dist, wass_dir = wasserstein_distance_and_direction(
+        np.concatenate(cntrl),
+        np.concatenate(treat)
+    )
+    labels = np.repeat([0, 1], [len(cntrl), len(treat)])
+    pool = cntrl + treat
+    obs_dist_mat = pairwise_wasserstein(pool)
+    sil = silhouette_score(obs_dist_mat, labels)
+    samp_lns = [len(samp) for samp in pool]
+    split_idx = np.cumsum(samp_lns[:-1])
+    n = split_idx[len(cntrl) - 1]
+    pool = np.concatenate(pool)
+    exp_wass = []
+    exp_sil = []
+    for _ in range(bootstraps):
+        rs.shuffle(pool)
+        exp_wass.append(stats.wasserstein_distance(pool[:n], pool[n:]))
+        shuf_samps = np.array_split(pool, split_idx)
+        exp_dist_mat = pairwise_wasserstein(shuf_samps)
+        exp_sil.append(silhouette_score(exp_dist_mat, labels))
+    exp_wass = np.array(exp_wass)
+    exp_sil = np.array(exp_sil)
+
+    if fit_gamma:
+        g_fit = stats.gamma.fit(exp_wass)
+        wass_pval = stats.gamma.sf(wass_dist, *g_fit)
+    else:
+        wass_pval = ((exp >= wass_dist).sum() + 1) / (bootstraps + 1)
+
+    if fit_skewnorm:
+        s_fit = stats.skewnorm.fit(exp_sil)
+        sil_pval = stats.skewnorm.sf(sil, *s_fit)
+    else:
+        sil_pval = ((sil <= exp_sil).sum() + 1) / (bootstraps + 1)
+    return wass_dist, wass_dir, wass_pval, sil, sil_pval
+
+
+def wasserstein_test(u_values, v_values, bootstraps=999,
+                     fit_gamma=True, random_state=None):
+
+    rs = np.random.RandomState(random_state)
     # permutation test of wasserstein distance
     # based on the one outlined in https://github.com/cdowd/twosamples
     wass_dist, wass_dir = wasserstein_distance_and_direction(u_values, v_values)
@@ -44,67 +100,36 @@ def wasserstein_test(u_values, v_values, bootstraps=999, use_gamma_model=True):
     n = len(u_values)
     exp = []
     for _ in range(bootstraps):
-        np.random.shuffle(pool)
+        rs.shuffle(pool)
         exp.append(stats.wasserstein_distance(pool[:n], pool[n:]))
     exp = np.array(exp)
 
-    if not use_gamma_model:
+    if fit_gamma:
+        # fit a gamma distribution to the expected distances
+        g_fit = stats.gamma.fit(exp_wass)
+        # compute p value using survival function
+        wass_p_val = stats.gamma.sf(wass_dist, *g_fit)
+    else:
         # bootstrap p value with pseudocount
         p_val = ((exp >= wass_dist).sum() + 1) / (bootstraps + 1)
-    else:
-        # fit a gamma distribution to the expected distances
-        g = stats.gamma(*stats.gamma.fit(exp))
-        # compute p value using survival function
-        p_val = g.sf(wass_dist)
-    return wass_dist, wass_dir, p_val
-
-
-def wasserstein_test_with_replicates(u_values, v_values,
-                                     bootstraps=999,
-                                     threshold=0.05,
-                                     use_gamma_model=True,
-                                     test_homogeneity=False):
-    # first pool replicates and perform normal wass test
-    u_pooled = np.concatenate(u_values)
-    v_pooled = np.concatenate(v_values)
-    wass_dist, wass_dir, p_val = wasserstein_test(
-        u_pooled, v_pooled, bootstraps=bootstraps, use_gamma_model=use_gamma_model
-    )
-
-    # we only bother testing for homogeneity of replicates if the test between
-    # replicates is significant
-    if test_homogeneity and p_val <= threshold:
-
-        # produce pairwise distances between replicates for both conditions
-        u_self_wass = np.array(
-            [stats.wasserstein_distance(u_i, u_j)
-             for u_i, u_j in it.combinations(u_values, r=2)]
-        )
-        v_self_wass = np.array(
-            [stats.wasserstein_distance(v_i, v_j)
-             for v_i, v_j in it.combinations(v_values, r=2)]
-        )
-
-        # samples are considered homogeneous if the distance between the two
-        # conds is greater than all the pairwise distances within conds.
-        is_homogeneous = 1 - int((u_self_wass >= wass_dist).any() |
-                                 (v_self_wass >= wass_dist).any())
-        if not is_homogeneous:
-            p_val = 1
     return wass_dist, wass_dir, p_val
 
 
 def d3pendr_stats(tpe_dist_cntrl, tpe_dist_treat,
-                  bootstraps=999, threshold=0.05,
-                  use_gamma_model=True, test_homogeneity=False):
-    if len(tpe_dist_cntrl) == 1:
+                  bootstraps=999, fit_gamma=True,
+                  sil_test=True, fit_skewnorm=True,
+                  random_state=None):
+    if len(tpe_dist_cntrl) == 1 or not sil_test:
         wass_dist, wass_dir, wass_pval = wasserstein_test(
-            tpe_dist_cntrl[0], tpe_dist_treat[0], bootstraps, use_gamma_model,
+            np.concatenate(tpe_dist_cntrl),
+            np.concatenate(tpe_dist_treat),
+            bootstraps, fit_gamma, random_state
         )
+        sil, sil_pval = np.nan, np.nan
     else:
-        wass_dist, wass_dir, wass_pval = wasserstein_test_with_replicates(
+        wass_dist, wass_dir, wass_pval, sil, sil_pval = wasserstein_silhouette_test(
             tpe_dist_cntrl, tpe_dist_treat, bootstraps,
-            threshold, use_gamma_model, test_homogeneity,
+            fit_gamma, fit_skewnorm, random_state
         )
 
-    return wass_dist, wass_dir, wass_pval
+    return wass_dist, wass_dir, wass_pval, sil, sil_pval

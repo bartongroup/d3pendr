@@ -13,6 +13,7 @@ from .stats import d3pendr_stats
 RESULTS_COLUMNS = [
     'chrom', 'start', 'end', 'gene_id', 'score', 'strand',
     'wass_dist', 'wass_dir', 'wass_pval', 'wass_fdr',
+    'sil_score', 'sil_pval', 'sil_fdr',
     'nreads_cntrl', 'nreads_treat'
 ]
 
@@ -26,10 +27,12 @@ TPE_APA_RESULTS_COLUMNS = [
 def _process_gtf_records(gtf_records, treat_bam_fns, cntrl_bam_fns,
                          read_strand, read_end, paired_end_read,
                          min_read_overlap, min_reads,
-                         bootstraps, threshold,
-                         use_gamma_model, test_homogeneity,
+                         bootstraps, threshold, fit_gamma,
+                         sil_test, fit_skewnorm, random_state,
                          is_bam, find_apa_tpe_sites, tpe_sigma,
                          tpe_min_reads, tpe_min_rel_change):
+
+    random_state = np.random.default_rng(random_state)
     results = []
     tpe_apa_res = []
 
@@ -50,15 +53,16 @@ def _process_gtf_records(gtf_records, treat_bam_fns, cntrl_bam_fns,
             )
 
             if (nreads_cntrl >= min_reads).all() and (nreads_treat >= min_reads).all():
-                wass_dist, wass_dir, wass_pval = d3pendr_stats(
+                wass_dist, wass_dir, wass_pval, sil_score, sil_pval = d3pendr_stats(
                     cntrl_distribs, treat_distribs,
-                    bootstraps=bootstraps, threshold=threshold,
-                    use_gamma_model=use_gamma_model,
-                    test_homogeneity=test_homogeneity,
+                    bootstraps=bootstraps, fit_gamma=fit_gamma,
+                    sil_test=sil_test, fit_skewnorm=fit_skewnorm,
+                    random_state=random_state
                 )
                 results.append([
                     chrom, start, end, gene_id, round(wass_dist), strand,
                     wass_dist, wass_dir, wass_pval, 1, # placeholder for wasserstein test fdr
+                    sil_score, sil_pval, 1,
                     nreads_cntrl, nreads_treat
                 ])
 
@@ -101,10 +105,10 @@ def run_d3pendr(gtf_fn, treat_bam_fns, cntrl_bam_fns,
                 max_terminal_intron_size,
                 min_terminal_exon_size,
                 bootstraps, threshold,
-                use_gamma_model, test_homogeneity,
+                fit_gamma, sil_test, fit_skewnorm,
                 find_tpe_sites, tpe_sigma,
                 tpe_min_reads, tpe_min_rel_change,
-                processes):
+                processes, random_state):
 
     filetype = bam_or_bw(*treat_bam_fns, *cntrl_bam_fns)
 
@@ -112,8 +116,8 @@ def run_d3pendr(gtf_fn, treat_bam_fns, cntrl_bam_fns,
         treat_bam_fns, cntrl_bam_fns,
         read_strand, read_end, paired_end_read,
         min_read_overlap, min_reads_per_cond,
-        bootstraps, threshold,
-        use_gamma_model, test_homogeneity,
+        bootstraps, threshold, fit_gamma,
+        sil_test, fit_skewnorm, random_state,
         filetype, find_tpe_sites, tpe_sigma,
         tpe_min_reads, tpe_min_rel_change,
     )
@@ -139,6 +143,7 @@ def run_d3pendr(gtf_fn, treat_bam_fns, cntrl_bam_fns,
             tpe_apa_results = None
 
     _, results['wass_fdr'], *_ = multipletests(results.wass_pval, method='fdr_bh')
+    _, results['sil_fdr'], *_ = multipletests(results.sil_pval, method='fdr_bh')
 
     if find_tpe_sites:
         tpe_apa_results = tpe_apa_results[

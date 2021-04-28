@@ -44,10 +44,34 @@ def pairwise_wasserstein(samples):
     return dist_mat
 
 
+def silhouette_score(X, labels):
+    _, idx, label_counts = np.unique(
+        labels, return_inverse=True, return_counts=True
+    )
+    label_counts = label_counts[idx]
+    a = np.zeros(len(labels))
+    b = np.zeros(len(labels))
+    for i, j in zip(*np.triu_indices(len(labels))):
+        if i != j:
+            if labels[i] == labels[j]:
+                a[i] += X[i, j]
+                a[j] += X[i, j]
+            else:
+                b[i] += X[i, j]
+                b[j] += X[i, j]
+    a = a / (label_counts - 1)
+    b = b / label_counts
+    return np.mean((b - a) / np.maximum(a, b))
+
+
 def wasserstein_silhouette_test(cntrl, treat, bootstraps=999,
                                 fit_skewnorm=True, fit_gamma=True,
                                 random_state=None):
-    rs = np.random.RandomState(random_state)
+    if not isinstance(random_state, np.random.Generator):
+        rs = np.random.default_rng(random_state)
+    else:
+        rs = random_state
+
     wass_dist, wass_dir = wasserstein_distance_and_direction(
         np.concatenate(cntrl),
         np.concatenate(treat)
@@ -87,8 +111,8 @@ def wasserstein_silhouette_test(cntrl, treat, bootstraps=999,
 
 def wasserstein_test(u_values, v_values, bootstraps=999,
                      fit_gamma=True, random_state=None):
-
-    rs = np.random.RandomState(random_state)
+    if not isinstance(random_state, np.random.Generator):
+        rs = np.random.default_rng(random_state)
     # permutation test of wasserstein distance
     # based on the one outlined in https://github.com/cdowd/twosamples
     wass_dist, wass_dir = wasserstein_distance_and_direction(u_values, v_values)
@@ -106,13 +130,13 @@ def wasserstein_test(u_values, v_values, bootstraps=999,
 
     if fit_gamma:
         # fit a gamma distribution to the expected distances
-        g_fit = stats.gamma.fit(exp_wass)
+        g_fit = stats.gamma.fit(exp)
         # compute p value using survival function
         wass_p_val = stats.gamma.sf(wass_dist, *g_fit)
     else:
         # bootstrap p value with pseudocount
-        p_val = ((exp >= wass_dist).sum() + 1) / (bootstraps + 1)
-    return wass_dist, wass_dir, p_val
+        wass_p_val = ((exp >= wass_dist).sum() + 1) / (bootstraps + 1)
+    return wass_dist, wass_dir, wass_p_val
 
 
 def d3pendr_stats(tpe_dist_cntrl, tpe_dist_treat,

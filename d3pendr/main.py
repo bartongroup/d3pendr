@@ -26,12 +26,14 @@ from .d3pendr import run_d3pendr
 @click.option('--min-terminal-exon-size', default=30)
 @click.option('--bootstraps', default=999)
 @click.option('--threshold', default=0.05)
-@click.option('--use-gamma-model/--no-model', default=True)
-@click.option('--test-homogeneity/--no-test-homogeneity', default=False)
+@click.option('--use-gamma-model/--no-gamma-model', default=True)
+@click.option('--test-homogeneity/--no-test-homogeneity', default=True)
+@click.option('--use-skewnorm-model/--no-skewnorm-model', default=True)
 @click.option('--tpe-cluster-sigma', default=15)
 @click.option('--min-tpe-reads', default=5)
 @click.option('--min-tpe-fractional-change', default=0.1)
 @click.option('-p', '--processes', default=4)
+@click.option('-r', '--random-seed', default=None)
 def d3pendr(treatment_fns, control_fns,
             output_prefix, write_apa_sites,
             annotation_gtf_fn,
@@ -41,9 +43,10 @@ def d3pendr(treatment_fns, control_fns,
             extend_gene_three_prime,
             use_locus_tag,
             max_terminal_intron_size, min_terminal_exon_size,
-            bootstraps, threshold, use_gamma_model, test_homogeneity,
+            bootstraps, threshold, use_gamma_model,
+            test_homogeneity, use_skewnorm_model,
             tpe_cluster_sigma, min_tpe_reads, min_tpe_fractional_change,
-            processes):
+            processes, random_seed):
     '''
     d3pendr: Differential 3' End analysis of Nanopore Direct RNAs
 
@@ -55,6 +58,9 @@ def d3pendr(treatment_fns, control_fns,
     Outputs bed6 format with extra columns.
     '''
 
+    if random_seed is None:
+        random_seed = abs(hash(annotation_gtf_fn))
+
     results, apa_sites = run_d3pendr(
         annotation_gtf_fn,
         treatment_fns, control_fns,
@@ -65,10 +71,10 @@ def d3pendr(treatment_fns, control_fns,
         use_locus_tag,
         max_terminal_intron_size, min_terminal_exon_size,
         bootstraps, threshold,
-        use_gamma_model, test_homogeneity,
+        use_gamma_model, test_homogeneity, use_skewnorm_model,
         write_apa_sites,
         tpe_cluster_sigma, min_tpe_reads, min_tpe_fractional_change,
-        processes
+        processes, random_seed
     )
     output_bed = f'{output_prefix}.apa_results.bed'
     write_wass_test_output_bed(output_bed, results)

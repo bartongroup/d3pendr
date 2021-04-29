@@ -1,17 +1,82 @@
+import dataclasses
 import click
 
-from .output import (
-    write_wass_test_output_bed,
-    write_apa_site_bed,
-)
+from .output import write_wass_test_output_bed
 from .d3pendr import run_d3pendr
+
+
+@dataclasses.dataclass
+class BAMOpts:
+    treatment_fns: str
+    control_fns: str
+    read_strand: str
+    read_end: str
+    paired_end_read: str
+    min_read_overlap: float
+    min_reads_per_rep: int
+
+@dataclasses.dataclass
+class GTFOpts:
+    annotation_gtf_fn: str
+    extend_gene_five_prime: int
+    use_5utr: bool
+    extend_gene_three_prime: int
+    use_locus_tag: bool
+
+
+@dataclasses.dataclass
+class StatOpts:
+    bootstraps: int
+    threshold: float
+    wass_fit_gamma: bool
+    silhouette_test: bool
+    sil_fit_skewnorm: bool
+
+        
+@dataclasses.dataclass(init=False)
+class D3pendrOpts:
+    bam: BAMOpts
+    gtf: GTFOpts
+    stats: StatOpts
+    output_bed: str
+    processes: int
+    random_seed: int = None
+
+
+    def __init__(self, **kwargs):
+        _nested_fields = {}
+        _toplevel_fields = set()
+        for field in dataclasses.fields(self):
+            if dataclasses.is_dataclass(field.type):
+                _nested_fields[(field.name, field.type)] = set()
+                for subfield in dataclasses.fields(field.type):
+                    _nested_fields[(field.name, field.type)].add(subfield.name)
+            else:
+                _toplevel_fields.add(field.name)
+        # assign values to sub-dataclasses
+        for (name, subclass), fields in _nested_fields.items():
+            subclass_kwargs = {}
+            for f in fields:
+                subclass_kwargs[f] = kwargs[f]
+            setattr(self, name, subclass(**subclass_kwargs))
+        # assign toplevel fields
+        for name in _toplevel_fields:
+            setattr(self, name, kwargs[name])
+
+
+def make_dataclass_decorator(dc):
+    def _dataclass_decorator(cmd):
+        @click.pass_context
+        def _make_dataclass(ctx, **kwargs):
+            return ctx.invoke(cmd, dc(**kwargs))
+        return _make_dataclass
+    return _dataclass_decorator
 
 
 @click.command()
 @click.option('-t', '--treatment-fns', required=True, multiple=True)
 @click.option('-c', '--control-fns', required=True, multiple=True)
-@click.option('-o', '--output-prefix', required=True)
-@click.option('--write-apa-sites/--no-apa-sites', required=False, default=True)
+@click.option('-o', '--output-bed', required=True)
 @click.option('-a', '--annotation-gtf-fn', required=True)
 @click.option('--read-strand', type=click.Choice(['same', 'opposite', 'unstranded']), default='same')
 @click.option('--read-end', type=click.Choice(['3', '5']), default='3')
@@ -22,31 +87,15 @@ from .d3pendr import run_d3pendr
 @click.option('--use-5utr/--ignore-5utr', default=True)
 @click.option('--extend-gene-three-prime', default=0)
 @click.option('--use-locus-tag/--use-gene-id-tag', default=False)
-@click.option('--max-terminal-intron-size', default=100_000)
-@click.option('--min-terminal-exon-size', default=30)
 @click.option('--bootstraps', default=999)
 @click.option('--threshold', default=0.05)
-@click.option('--use-gamma-model/--no-gamma-model', default=True)
-@click.option('--test-homogeneity/--no-test-homogeneity', default=True)
-@click.option('--use-skewnorm-model/--no-skewnorm-model', default=True)
-@click.option('--tpe-cluster-sigma', default=15)
-@click.option('--min-tpe-reads', default=5)
-@click.option('--min-tpe-fractional-change', default=0.1)
+@click.option('--wass-fit-gamma/--no-fit-gamma', default=True)
+@click.option('--silhouette-test/--no-silhouette-test', default=True)
+@click.option('--sil-fit-skewnorm/--no-fit-skewnorm', default=True)
 @click.option('-p', '--processes', default=4)
 @click.option('-r', '--random-seed', default=None)
-def d3pendr(treatment_fns, control_fns,
-            output_prefix, write_apa_sites,
-            annotation_gtf_fn,
-            read_strand, read_end, paired_end_read,
-            min_read_overlap, min_reads_per_rep,
-            extend_gene_five_prime, use_5utr,
-            extend_gene_three_prime,
-            use_locus_tag,
-            max_terminal_intron_size, min_terminal_exon_size,
-            bootstraps, threshold, use_gamma_model,
-            test_homogeneity, use_skewnorm_model,
-            tpe_cluster_sigma, min_tpe_reads, min_tpe_fractional_change,
-            processes, random_seed):
+@make_dataclass_decorator(D3pendrOpts)
+def d3pendr(opts):
     '''
     d3pendr: Differential 3' End analysis of Nanopore Direct RNAs
 
@@ -58,29 +107,11 @@ def d3pendr(treatment_fns, control_fns,
     Outputs bed6 format with extra columns.
     '''
 
-    if random_seed is None:
-        random_seed = abs(hash(annotation_gtf_fn))
+    if opts.random_seed is None:
+        opts.random_seed = abs(hash(opts.gtf.annotation_gtf_fn))
 
-    results, apa_sites = run_d3pendr(
-        annotation_gtf_fn,
-        treatment_fns, control_fns,
-        read_strand, read_end, paired_end_read,
-        min_read_overlap, min_reads_per_rep,
-        extend_gene_five_prime, use_5utr,
-        extend_gene_three_prime,
-        use_locus_tag,
-        max_terminal_intron_size, min_terminal_exon_size,
-        bootstraps, threshold,
-        use_gamma_model, test_homogeneity, use_skewnorm_model,
-        write_apa_sites,
-        tpe_cluster_sigma, min_tpe_reads, min_tpe_fractional_change,
-        processes, random_seed
-    )
-    output_bed = f'{output_prefix}.apa_results.bed'
-    write_wass_test_output_bed(output_bed, results)
-    if write_apa_sites:
-        apa_site_bed = f'{output_prefix}.apa_sites.bed'
-        write_apa_site_bed(apa_site_bed, apa_sites)
+    results = run_d3pendr(opts)
+    write_wass_test_output_bed(opts.output_bed, results)
 
 
 if __name__ == '__main__':

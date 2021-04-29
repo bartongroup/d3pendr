@@ -1,9 +1,5 @@
-from bisect import bisect_right
 from collections import defaultdict, Counter
-
 import numpy as np
-from scipy import ndimage as ndi
-from scipy import signal
 
 
 def relative_tpe(gene_start, gene_end, aln_start, aln_end, strand, read_end):
@@ -126,81 +122,3 @@ def get_tpe_distribution(mbam, chrom, gene_start, gene_end, strand,
 
     nreads = np.array(nreads)
     return tpe_distribs, nreads
-
-
-def find_tpe_peaks_in_coverage_bincounts(tpe_cov, sigma, min_exprs, min_dist):
-    tpe_cov = ndi.convolve(
-        tpe_cov, np.ones(sigma), mode='constant', cval=0
-    )
-    # in case there is a flat peak at the start/end of the cov
-    tpe_cov = np.insert(tpe_cov, [0, len(tpe_cov)], 0, 0)
-
-    tpes, _ = signal.find_peaks(
-        tpe_cov, height=min_exprs, distance=min_dist
-    )
-    return tpes - 1
-
-
-def argrelmin_left_on_flat(arr, order):
-    idx = []
-    for i in range(order, len(arr) - order):
-        if np.all(arr[i] < arr[i - order: i]) and np.all(arr[i] <= arr[i + 1: i + 1 + order]):
-            idx.append(i)
-    return np.array(idx)
-
-
-def cluster_by_endpoint(endpoints, conds, sigma):
-    offset = endpoints.min() - sigma * 3
-    endpoints_scaled = endpoints - offset
-    endpoints_max = endpoints_scaled.max()
-    endpoints_dist = np.bincount(
-        endpoints_scaled,
-        minlength=endpoints_max + sigma * 3
-    ).astype('f')
-    endpoints_dist = ndi.filters.gaussian_filter1d(
-        endpoints_dist, sigma=sigma, mode='constant', cval=0
-    )
-
-    # find local minima in three prime positions
-    cut_idx = argrelmin_left_on_flat(endpoints_dist, order=sigma)
-    cut_idx = cut_idx + offset
-
-    # classify alignments in relation to local minima
-    cluster_idx = defaultdict(list)
-    cluster_cond_count = defaultdict(list)
-    for pos, c in zip(endpoints, conds):
-        i = bisect_right(cut_idx, pos)
-        cluster_idx[i].append(pos)
-        cluster_cond_count[i].append(c)
-
-    # get actual start/end points of cluster and cluster counts for each cond
-    clusters = {}
-    for i, pos in cluster_idx.items():
-        inv = (min(pos), max(pos))
-        clusters[inv] = Counter(cluster_cond_count[i])
-    return clusters
-
-
-def get_apa_tpes(cntrl_distrib, nreads_cntrl,
-                 treat_distrib, nreads_treat,
-                 sigma, min_count, min_rel_change):
-    endpoints = np.concatenate([
-        *cntrl_distrib, *treat_distrib
-    ])
-    conds = np.repeat(
-        [0, 1],
-        [nreads_cntrl, nreads_treat]
-    )
-    assert len(endpoints) == len(conds)
-    tpes = cluster_by_endpoint(endpoints, conds, sigma)
-
-    for (start, end), counts in tpes.items():
-        cntrl_count = counts[0]
-        treat_count = counts[1]
-        if (cntrl_count + treat_count) >= min_count:
-            cntrl_frac = cntrl_count / nreads_cntrl
-            treat_frac = treat_count / nreads_treat
-            relative_change = treat_frac - cntrl_frac
-            if np.abs(relative_change) >= min_rel_change:
-                yield (start, end, cntrl_count, treat_count,
-                       cntrl_frac, treat_frac, relative_change)

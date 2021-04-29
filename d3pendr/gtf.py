@@ -1,5 +1,19 @@
 import re
 import numpy as np
+import dataclasses
+
+@dataclasses.dataclass
+class GTFRecord:
+    '''Class for handling results of wasserstein_test and wasserstein_silhouette_test'''
+    chrom: str
+    start: int
+    end: int
+    locus_id: str
+    strand: str
+
+    @property
+    def is_reverse(self):
+        return self.strand == '-'
 
 
 def chunk_gtf_records(gtf_records, processes):
@@ -30,35 +44,8 @@ def flatten_intervals(invs):
     return np.array(flattened)
 
 
-def filter_terminal_exons(invs, max_intron_size, min_exon_size):
-    if len(invs) == 1:
-        return invs
-    else:
-        l_ex = invs[0, 1] - invs[0, 0]
-        l_in = invs[1, 0] - invs[0, 1]
-        if (l_ex < min_exon_size) or (l_in >= max_intron_size):
-            invs = invs[1:]
-            if len(invs) == 1:
-                return invs
-        else:
-            r_ex = invs[-1, 1] - invs[-1, 0]
-            r_in = invs[-1, 0] - invs[-2, 1]
-            if (r_ex < min_exon_size) or (r_in >= max_intron_size):
-                invs = invs[:-1]
-    return invs
-
-
-def get_record_range(invs,
-                     max_terminal_intron_size=None,
-                     min_terminal_exon_size=None,
-                     filter_=True):
+def get_record_range(invs):
     invs = flatten_intervals(invs)
-    if filter_:
-        invs = filter_terminal_exons(
-            invs,
-            max_terminal_intron_size,
-            min_terminal_exon_size,
-        )
     return invs[0, 0], invs[-1, 1]
 
 
@@ -73,23 +60,21 @@ def get_gtf_attribute(gtf_record, attribute):
     return attr
 
 
-def gtf_iterator(gtf_fn,
+def gtf_iterator(annotation_gtf_fn,
                  extend_gene_five_prime=0,
                  use_5utr=False,
                  extend_gene_three_prime=0,
-                 by_locus=True,
-                 max_terminal_intron_size=100_000,
-                 min_terminal_exon_size=20):
+                 use_locus_tag=True):
     gtf_records = {}
-    if by_locus:
+    if use_locus_tag:
         gene_to_locus_mapping = {}
-    with open(gtf_fn) as gtf:
+    with open(annotation_gtf_fn) as gtf:
         for i, record in enumerate(gtf):
             record = record.split('\t')
             chrom, _, feat_type, start, end, _, strand = record[:7]
             start = int(start) - 1
             end = int(end)
-            if feat_type == 'transcript' and by_locus:
+            if feat_type == 'transcript' and use_locus_tag:
                 locus_id = get_gtf_attribute(record, 'locus')
                 gene_id = get_gtf_attribute(record, 'gene_id')
                 gene_to_locus_mapping[gene_id] = locus_id
@@ -102,7 +87,7 @@ def gtf_iterator(gtf_fn,
                     gtf_records[idx][feat_type] = []
                 gtf_records[idx][feat_type].append((start, end))
 
-    if by_locus:
+    if use_locus_tag:
         # regroup gene invs by locus id:
         gtf_records_by_locus = {}
         for (chrom, gene_id, strand), feat_invs in gtf_records.items():
@@ -118,16 +103,9 @@ def gtf_iterator(gtf_fn,
 
     # once whole file is parsed yield the intervals
     for (chrom, gene_id, strand), feat_invs in gtf_records.items():
-        exon_start, exon_end = get_record_range(
-            feat_invs['exon'],
-            max_terminal_intron_size,
-            min_terminal_exon_size,
-        )
+        exon_start, exon_end = get_record_range(feat_invs['exon'])
         try:
-            cds_start, cds_end = get_record_range(
-                feat_invs['CDS'],
-                filter_=False,
-            )
+            cds_start, cds_end = get_record_range(feat_invs['CDS'])
         except KeyError:
             # non-coding RNA
             cds_start, cds_end = exon_start, exon_end
@@ -148,4 +126,4 @@ def gtf_iterator(gtf_fn,
         gene_start = max(0, gene_start - start_ext)
         gene_end = gene_end + end_ext
 
-        yield chrom, gene_start, gene_end, gene_id, strand
+        yield GTFRecord(chrom, gene_start, gene_end, gene_id, strand)

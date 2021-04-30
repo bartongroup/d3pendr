@@ -59,22 +59,25 @@ def pairwise_wasserstein(samples):
 
 
 def silhouette_score(X, labels):
-    _, idx, label_counts = np.unique(
-        labels, return_inverse=True, return_counts=True
-    )
-    label_counts = label_counts[idx]
-    a = np.zeros(len(labels))
-    b = np.zeros(len(labels))
-    for i, j in zip(*np.triu_indices(len(labels))):
+    assert np.array_equal(np.sort(labels), labels)
+    # renumber from zero
+    unique_labels = np.unique(labels, return_inverse=True)
+    n_samples = len(labels)
+    n_labels = len(unique_labels)
+
+    idx = np.indices(X.shape).reshape(2, -1)
+    sum_ = np.zeros((n_samples, n_labels))
+    count = np.zeros((n_samples,  n_labels))
+    for i, j, r, c, d in zip(*idx, *labels[idx], X.ravel()):
         if i != j:
-            if labels[i] == labels[j]:
-                a[i] += X[i, j]
-                a[j] += X[i, j]
-            else:
-                b[i] += X[i, j]
-                b[j] += X[i, j]
-    a = a / (label_counts - 1)
-    b = b / label_counts
+            sum_[i, c] += d
+            count[i, c] += 1
+    mean = (sum_ / count).tolist()
+    a = np.empty(n_samples)
+    b = np.empty(n_samples)
+    for i, (lab, vals) in enumerate(zip(labels, mean)):
+        a[i] = vals.pop(lab)
+        b[i] = min(vals)
     return np.mean((b - a) / np.maximum(a, b))
 
 

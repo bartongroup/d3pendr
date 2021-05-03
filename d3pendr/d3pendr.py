@@ -5,7 +5,7 @@ from statsmodels.stats.multitest import multipletests
 from joblib import Parallel, delayed
 
 from .multibam import MultiBamParser, MultiBigWigParser, bam_or_bw
-from .gtf import gtf_iterator, chunk_gtf_records, GTFRecord
+from .gtf import GTFGeneBoundaryIterator, chunk_gtf_records, GTFRecord
 from .tpe import get_tpe_distribution
 from .stats import d3pendr_stats, WassTestResults
 
@@ -64,7 +64,7 @@ def _process_gtf_records(gtf_records, bam_opts, stat_opts, random_seed, is_bam):
 def run_d3pendr(opts):
 
     filetype = bam_or_bw(*opts.bam.treatment_fns, *opts.bam.control_fns)
-    gtf_it = gtf_iterator(**dataclasses.asdict(opts.gtf))
+    gtf_it = GTFGeneBoundaryIterator(**dataclasses.asdict(opts.gtf))
     if opts.processes == 1:
         # run on main process
         results, tpa_apa_results = _process_gtf_records(

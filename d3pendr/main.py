@@ -19,9 +19,9 @@ class BAMOpts:
 class GTFOpts:
     annotation_gtf_fn: str
     extend_gene_five_prime: int
-    use_5utr: bool
     extend_gene_three_prime: int
     use_locus_tag: bool
+    allow_overlap_next_gene: bool
 
 
 @dataclasses.dataclass
@@ -84,9 +84,9 @@ def make_dataclass_decorator(dc):
 @click.option('--min-read-overlap', default=0.2)
 @click.option('--min-reads-per-rep', default=5)
 @click.option('--extend-gene-five-prime', default=0)
-@click.option('--use-5utr/--ignore-5utr', default=True)
 @click.option('--extend-gene-three-prime', default=0)
 @click.option('--use-locus-tag/--use-gene-id-tag', default=False)
+@click.option('--allow-overlap-next-gene/--no-gene-overlap', default=False)
 @click.option('--bootstraps', default=999)
 @click.option('--threshold', default=0.05)
 @click.option('--wass-fit-gamma/--no-fit-gamma', default=True)

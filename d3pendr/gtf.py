@@ -68,7 +68,7 @@ def get_gtf_attribute(gtf_record, attribute):
     except AttributeError:
         raise ValueError(
             f'Could not parse attribute {attribute} '
-            f'from GTF with feature type {record[2]}'
+            f'from GTF with feature type {gtf_record[2]}'
         )
     return attr
 
